@@ -1,0 +1,4 @@
+This project is an Alexa skill that will prompt the user to play a card game.  Alexa will provide a card to the user and will then ask the user to
+ guess if the value of the next card will be higher or lower than the previous one.  If the user guesses correctly then the game continues until the user loses.
+Scoring is based on the probability of guessing incorrectly (riskier guesses result in a higher score - but with an increased likelihood of being incorrect).  
+The skill should keep track of the current streak of guesses and should also track the highest streak and score reached by the player.
