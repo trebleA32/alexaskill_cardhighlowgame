@@ -5,15 +5,22 @@ exports.handler = function(event, context, callback) {
     var alexa = Alexa.handler(event, context);
     alexa.appId = 'amzn1.ask.skill.9a3a4704-ad3f-41cf-8b11-32be84fcceb9';
     alexa.dynamoDBTableName = 'cardHighLowGuessUsers';  // Save attribute data to DynamoDB
-    alexa.registerHandlers(newSessionHandlers, guessModeHandlers, newGameHandlers, continueGameHandlers);
+    alexa.registerHandlers(newSessionHandlers, guessModeHandlers, newGameHandlers, continueGameHandlers, pauseModeHandlers);
     alexa.execute();
 };
 
 var states = {
     GUESSMODE: '_GUESSMODE', // User is trying to guess if the next card will be higher or lower.
-    NEWGAMEMODE: '_NEWGAMEMODE',  // Prompt the user to start a game.
-    CONTINUEMODE: '_CONTINUEMODE' // Prompt user to continue a game or start a new one
+    NEWGAMEMODE: '_NEWGAMEMODE',  // User  has been prompted to start a game.
+    CONTINUEMODE: '_CONTINUEMODE', // User has been prompted to continue a game or start a new one
+    PAUSEMODE: '_PAUSEMODE' // User has exited the skill
 };
+
+var guessHigh = ['higher', 'high', 'bigger', 'big', 'more', 'greater', 'great'];
+
+var guessLow = ['lower', 'low', 'lesser', 'less', 'smaller', 'small'];
+
+var guessEqual = ['equal', 'same', 'similar', 'equivalent'];
 
 var welcomeMessage = 'Welcome to the Playing Card Higher or Lower guessing game. ';
 
@@ -23,7 +30,7 @@ var playAgainPrompt = 'Would you like to play another game? ';
 
 var helpMessage = 'I will say a playing card and you will guess whether the value of the next card will be higher, equal, or lower. ' + 
      'Each card is drawn without replacement from a deck of 52 cards.  Aces are the highest cards and Twos are the lowest cards. ' + 
-     'You keep guessing until you guess incorrectly or run out of cards. ';
+     'You keep guessing until you guess incorrectly or run out of cards. To reset your high scores and current game at any point just say reset data. ';
 
 var goodbyeMessage = 'Goodbye! ';
 
@@ -43,24 +50,13 @@ var newGameMessage = 'Starting new game. ';
 
 var continueMessage = 'Continuing game. ';
 
+var noContinueMessage = 'There is no saved game to continue. ';
+
+var clearDataMessage = 'Data cleared. ';
+
 var newSessionHandlers = { // This should only matter if its the first time the skill has been launched
     'LaunchRequest': function() {
-	if(this.attributes.gamesPlayed === undefined) { // Check if its the first time the skill has been launched, just to be sure
-            this.attributes.gamesPlayed = 0;
-            this.attributes.currentStreak = undefined;
-	    this.attributes.currentScore = 0;
-
-	    this.attributes.cardArray = new Array(52);
-            for(var i = 0; i < 52; i++)
-            {
-                this.attributes.cardArray[i] = i;
-            }
-
-	    this.attributes.highStreakScore = 0;
-	    this.attributes.highStreakStreak = 0;
-            this.attributes.highScoreScore = 0;
-            this.attributes.highScoreStreak = 0;
-        }
+	helper.defineAttributes(this);
 
 	var message = welcomeMessage + helper.stringHighScore(this);
 	if(this.attributes.currentStreak !== undefined) // If there is a previous game that can be continued
@@ -78,16 +74,29 @@ var newSessionHandlers = { // This should only matter if its the first time the 
     },
     'ClearData': function() {
         console.log('CLEARDATA');
-        this.handler.state = '';
+        this.handler.state = states.NEWGAMEMODE;
         this.attributes.gamesPlayed = undefined;
-        this.attributes.currentStreak = undefined;
-        this.attributes.currentScore = undefined;
-        this.attributes.cardArray = undefined;
-        this.attributes.highStreakScore = undefined;
-        this.attributes.highStreakStreak = undefined;
-        this.attributes.highScoreScore = undefined;
-        this.attributes.highScoreStreak = undefined;
-        this.emit(':tell', 'Data Cleared.');
+        helper.defineAttributes(this);
+        var message =  clearDataMessage + newGamePrompt;
+        this.emit(':ask', message);
+    },
+    'AMAZON.ResumeIntent': function()
+    {
+        helper.defineAttributes(this);
+        var message = noContinueMessage + newGamePrompt;
+        
+        this.handler.state = states.NEWGAMEMODE;
+        this.emit(':ask', message, message);
+    },
+    'AMAZON.StartOverIntent': function() 
+    {
+        helper.defineAttributes(this);
+        helper.startOver(this);
+    },
+    'NewGameIntent': function()
+    {   
+        helper.defineAttributes(this);
+        helper.startOver(this);
     },
     'Unhandled': function() {
         console.log("UNHANDLED");
@@ -95,13 +104,68 @@ var newSessionHandlers = { // This should only matter if its the first time the 
     }
 };
 
+var pauseModeHandlers = Alexa.CreateStateHandler(states.PAUSEMODE,
+{
+    'LaunchRequest': function() 
+    {
+        var message = welcomeMessage + helper.stringHighScore(this);
+        if(this.attributes.currentStreak == undefined) // If there is no game to be continued
+        {
+            message += newGamePrompt;
+            this.handler.state = states.NEWGAMEMODE;
+        }
+        else // If there is a game to be continued
+        {
+            message = message + helper.stringScore(this, 'current') + continuePrompt;
+            this.handler.state = states.CONTINUEMODE;    
+        }
+        this.emit(':ask', message, message);
+    },
+    'AMAZON.ResumeIntent': function() 
+    {
+        if(this.attributes.currentStreak == undefined) // If there is no game to be continued
+        {
+            this.handler.state = states.NEWGAMEMODE;
+        }
+        else // If there is a game to be continued
+        {
+            this.handler.state = states.CONTINUEMODE;
+        }
+        this.emitWithState('AMAZON.ResumeIntent');
+    },
+    'NewGameIntent': function()
+    {
+        this.handler.state = states.NEWGAMEMODE;
+        this.emitWithState('NewGameIntent');
+    },
+    'AMAZON.StartOverIntent': function()
+    {
+        this.handler.state = states.CONTINUEMODE;
+        this.emitWithState('AMAZON.StartOverIntent');
+    },
+    'ClearData': function() {
+        this.handler.state = undefined;
+        this.emit('ClearData');
+    },
+    'Unhandled': function()
+    {
+        var message = unhandledMessage;
+        if(this.attributes.currentStreak == undefined) // If there is no game to be continued
+        {
+            this.handler.state = states.NEWGAMEMODE;
+            message += newGamePrompt;
+        }
+        else // If there is a game to be continued
+        {
+            this.handler.state = states.CONTINUEMODE;
+            message = message + helper.stringScore(this, 'current') + continuePrompt;
+            this.emit(':ask', message, message);
+        }
+    }
+});
+
 var continueGameHandlers = Alexa.CreateStateHandler(states.CONTINUEMODE, 
 {
-    'LaunchRequest': function() {
-	console.log('continuelaunchrequest');
-        this.handler.state = '';
-        this.emitWithState('LaunchRequest');
-    }, 
     'AMAZON.ResumeIntent': function ()
     {
         helper.continueGame(this, continueMessage);
@@ -118,56 +182,62 @@ var continueGameHandlers = Alexa.CreateStateHandler(states.CONTINUEMODE,
     },
     'NewGameIntent': function()
     {
-        helper.startOver(this, newGameMessage);
+        helper.startOver(this);
     },
     'AMAZON.StartOverIntent': function ()
     {
-        helper.startOver(this, newGameMessage);
+        helper.startOver(this);
     },
     'AMAZON.NoIntent': function() 
     {
         console.log("NOINTENT");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     "AMAZON.StopIntent": function() 
     {
         console.log("STOPINTENT");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     "AMAZON.CancelIntent": function() {
         console.log("CANCELINTENT");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     'SessionEndedRequest': function () {
         console.log("SESSIONENDEDREQUEST");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     'ClearData': function() {
         this.handler.state = undefined;
         this.emit('ClearData');
     },
     'Unhandled': function() {
-        console.log("UNHANDLED");
+        console.log("UNHANDLED_C");
         var message = unhandledMessage + continuePrompt;
         this.emit(':ask', message, message);
     }
 });
 
 var newGameHandlers = Alexa.CreateStateHandler(states.NEWGAMEMODE, {
-    'LaunchRequest': function() {
-	//var message = welcomeMessage + helper.stringHighScore(this) + newGamePrompt;
-        //this.emit(':ask', message, message);
-        console.log('newgamelaunchrequest');
-        this.handler.state = '';
-        this.emitWithState('LaunchRequest');
+    'LaunchRequest': function()
+    {
+        helper.startNewGame(this);
+    },
+    'AMAZON.ResumeIntent': function()
+    {
+        var message = noContinueMessage + newGamePrompt;
+        this.emit(':ask', message, message);
     },
     'AMAZON.YesIntent': function() 
     {  // Start a new game
-        helper.startNewGame(this, newGameMessage);
+        helper.startNewGame(this);
     },
     'AMAZON.StartOverIntent': function ()
     {
-        helper.startNewGame(this, newGameMessage);
+        helper.startNewGame(this);
+    },
+    'NewGameIntent': function ()
+    { 
+        helper.startNewGame(this);
     },
     'AMAZON.NoIntent': function() 
     {
@@ -197,31 +267,51 @@ var newGameHandlers = Alexa.CreateStateHandler(states.NEWGAMEMODE, {
         helper.exitHelper(this);
     },
     'ClearData': function() {
-        this.handler.state = undefined;
         this.emit('ClearData');
     },
     'Unhandled': function() {
-        console.log("UNHANDLED");
+        console.log("UNHANDLED_NG");
         var message = unhandledMessage + newGamePrompt;
         this.emit(':ask', message, message);
     }
 });
 
 var guessModeHandlers = Alexa.CreateStateHandler(states.GUESSMODE, {
-    'LaunchRequest': function () 
+    'CardGuess': function() {
+        if(!this.event.request.intent || !this.event.request.intent.slots || !this.event.request.intent.slots.Guess)
+        {
+            this.emitWithState('Unhandled');
+        }
+        
+        for(var i = 0; i < guessHigh.length; i++)
+        {
+            if(this.event.request.intent.slots.Guess.value == guessHigh[i])
+            {
+                helper.cardGuessHelper(this, 1);
+                return;
+            }
+        }
+        for(var i = 0; i < guessLow.length; i++)
+        {
+            if(this.event.request.intent.slots.Guess.value == guessLow[i])
+            {
+                helper.cardGuessHelper(this, -1);
+                return;
+            }
+        }
+        for(var i = 0; i < guessEqual.length; i++)
+        {
+            if(this.event.request.intent.slots.Guess.value == guessEqual[i])
+            {
+                helper.cardGuessHelper(this, 0);
+                return;
+            }
+        }
+        this.emitWithState('Unhandled');    
+    },
+    'NewGameIntent': function()
     {
-        console.log('guesslaunchrequest');
-        this.handler.state = '';
-        this.emitWithState('LaunchRequest'); 
-    },
-    'CardGuessHigh': function() {
-        helper.cardGuessHelper(this, 1);
-    },
-    'CardGuessLow': function() {
-        helper.cardGuessHelper(this, -1);
-    },
-    'CardGuessEqual': function() {
-        helper.cardGuessHelper(this, 0);
+        helper.startOver(this);
     },
     'AMAZON.RepeatIntent': function()
     {
@@ -230,7 +320,7 @@ var guessModeHandlers = Alexa.CreateStateHandler(states.GUESSMODE, {
     }, 
     'AMAZON.StartOverIntent': function ()
     {
-        helper.startOver(this, newGameMessage);
+        helper.startOver(this);
     },
     'AMAZON.HelpIntent': function() {
         var message = helpMessage + helper.stringCurrentCard(this) + guessPrompt;
@@ -239,15 +329,15 @@ var guessModeHandlers = Alexa.CreateStateHandler(states.GUESSMODE, {
     "AMAZON.StopIntent": function() 
     {
         console.log("STOPINTENT");
-        helper.exitHelperContinue(this); 
+        helper.exitHelper(this); 
     },
     "AMAZON.CancelIntent": function() {
         console.log("CANCELINTENT");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     'SessionEndedRequest': function () {
         console.log("SESSIONENDEDREQUEST");
-        helper.exitHelperContinue(this);
+        helper.exitHelper(this);
     },
     'ClearData': function() {
         this.handler.state = undefined;
@@ -255,7 +345,7 @@ var guessModeHandlers = Alexa.CreateStateHandler(states.GUESSMODE, {
     },
     'Unhandled': function() {
         var message = unhandledMessage + helper.stringCurrentCard(this) + guessPrompt;
-        console.log("UNHANDLED");
+        console.log("UNHANDLED_G");
         this.emit(':ask', message, message);
     }
 });
@@ -263,11 +353,29 @@ var guessModeHandlers = Alexa.CreateStateHandler(states.GUESSMODE, {
 // Helper functions
 var helper = {
     
+    defineAttributes: function(context)
+    {
+        if(context.attributes.gamesPlayed === undefined) { // Check if its the first time the skill has been launched, just to be sure
+            context.attributes.gamesPlayed = 0;
+            context.attributes.currentStreak = undefined;
+	    context.attributes.currentScore = 0;
 
-    startOver: function(context, message)
+	    context.attributes.cardArray = new Array(52);
+            for(var i = 0; i < 52; i++)
+            {
+                context.attributes.cardArray[i] = i;
+            }
+
+	    context.attributes.highStreakScore = 0;
+	    context.attributes.highStreakStreak = 0;
+            context.attributes.highScoreScore = 0;
+            context.attributes.highScoreStreak = 0;
+        }
+    },
+    startOver: function(context)
     {
         helper.gameOver(context);
-        helper.startNewGame(context, message);
+        helper.startNewGame(context);
     },
     exitHelperContinue: function(context)
     {
@@ -276,20 +384,29 @@ var helper = {
     },
     exitHelper: function(context)
     {
+        context.handler.state = states.PAUSEMODE;
         helper.testNewHighScore(context);
         context.emit(':tell', goodbyeMessage, goodbyeMessage);
     },
-    startNewGame: function(context, message) // Sets up a new game
+    startNewGame: function(context) // Sets up a new game
     {
         context.attributes.gamesPlayed++; // Keep track of how many games played
         context.attributes.currentStreak = 0; // Need to draw new card for zero slot
         helper.drawRandomCard(context, context.attributes.currentStreak); // draw random card for current slot;        
-        helper.continueGame(context, message);
+        helper.continueGame(context, newGameMessage);
     },
     continueGame: function(context, imessage) // Continues where the game left off
     {
         context.handler.state = states.GUESSMODE;
-        var message = imessage + helper.stringCurrentCard(context) + guessPrompt;
+        var message = helper.stringCurrentCard(context) + guessPrompt;
+        if (imessage === undefined)
+        {
+            message = continueMessage + message;
+        }
+        else
+        {
+            message = imessage + message;
+        }
         context.emit(':ask', message, message);
     },
     cardGuessHelper: function(context, guessType) // Given the user's guess determine if points are awarded or game over (boolean input)
