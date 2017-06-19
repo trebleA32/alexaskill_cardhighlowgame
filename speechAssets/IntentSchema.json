@@ -1,0 +1,46 @@
+{
+  "intents": [
+    {
+      "intent": "AMAZON.CancelIntent"
+    },
+    {
+      "intent": "AMAZON.HelpIntent"
+    },
+    {
+      "intent": "AMAZON.NoIntent"
+    },
+    {
+      "intent": "AMAZON.RepeatIntent"
+    },
+    {
+      "intent": "AMAZON.ResumeIntent"
+    },
+    {
+      "intent": "AMAZON.StartOverIntent"
+    },
+    {
+      "intent": "AMAZON.StopIntent"
+    },
+    {
+      "intent": "AMAZON.YesIntent"
+    },
+    {
+      "slots": [
+        {
+          "name": "Guess",
+          "type": "GUESS_PHRASES"
+        }
+      ],
+      "intent": "CardGuess"
+    },
+    {
+      "intent": "ClearData"
+    },
+    {
+      "intent": "LaunchRequest"
+    },
+    {
+      "intent": "NewGameIntent"
+    }
+  ]
+}

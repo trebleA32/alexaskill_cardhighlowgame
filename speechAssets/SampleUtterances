@@ -1,0 +1,26 @@
+CardGuess {Guess}
+CardGuess how about {Guess}
+CardGuess the next card is {Guess}
+CardGuess is the next card {Guess}
+CardGuess is it {Guess}
+CardGuess the next value is {Guess}
+CardGuess the value is {Guess}
+CardGuess the value of the next card is {Guess}
+CardGuess the next one is {Guess}
+CardGuess is the next one {Guess}
+CardGuess is the next {Guess}
+CardGuess next card is {Guess}
+ClearData clear data
+ClearData wipe data
+ClearData remove data
+ClearData delete data
+ClearData reset data
+LaunchRequest play
+LaunchRequest start
+NewGameIntent new game
+NewGameIntent start new game
+NewGameIntent begin new game
+NewGameIntent play new game
+NewGameIntent start a new game
+NewGameIntent play a new game
+NewGameIntent begin a new game
