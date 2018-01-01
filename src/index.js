@@ -3,7 +3,7 @@ var Alexa = require("alexa-sdk");
 
 exports.handler = function(event, context, callback) {
     var alexa = Alexa.handler(event, context);
-    alexa.appId = 'amzn1.ask.skill.9a3a4704-ad3f-41cf-8b11-32be84fcceb9';
+    alexa.appId = 'appID';
     alexa.dynamoDBTableName = 'cardHighLowGuessUsers';  // Save attribute data to DynamoDB
     alexa.registerHandlers(newSessionHandlers, guessModeHandlers, newGameHandlers, continueGameHandlers, pauseModeHandlers);
     alexa.execute();
